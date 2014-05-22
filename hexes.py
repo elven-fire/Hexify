@@ -5,6 +5,9 @@ from PIL import Image, ImageDraw, ImageFont
 class HexPageOverlapError(Exception):
     pass
 
+class HexPageOverflowError(Exception):
+    pass
+
 class InvalidHexShapeError(Exception):
     pass
 
@@ -71,11 +74,11 @@ class HexDraw:
     WEST = 7  #: directly left (two columns over)
 
     # Standard colors
-    BACK_COLOR = (255, 100, 100, 100)
-    FRONT_COLOR = (100, 255, 100, 100)
-    SIDE_COLOR = (255, 255, 100, 100)
-    BG_COLOR = (255, 255, 255, 0)
-    OUTLINE_COLOR = (0, 0, 0, 0)
+    BACK_COLOR = (255, 100, 100, 255)
+    FRONT_COLOR = (100, 255, 100, 255)
+    SIDE_COLOR = (255, 255, 100, 255)
+    BG_COLOR = (255, 255, 255, 255)
+    OUTLINE_COLOR = (0, 0, 0, 255)
 
     # Multi-hex shape options
     SHAPE_LONG = 0
@@ -341,9 +344,14 @@ class HexDraw:
 
 class HexPage:
 
-    """Manages an Image consisting of a page of hex creatures."""
+    """Manages an Image consisting of a page of hex creatures.
 
-    BG_COLOR = (200, 200, 200, 255)
+    Methods:
+      place -- place a hex shape at a specific location
+      add -- place a hex shape at the next available location
+    """
+
+    BG_COLOR = (200, 200, 200, 0)
 
     def __init__(self, hexsize=(180, 180), pagesize=(11, 13), blanks=False):
         """Create a blank hex grid.
@@ -364,6 +372,7 @@ class HexPage:
         self.filled = [[False,] * pagesize[1] for i in range(pagesize[0])]
         if blanks:
             self._drawpage()
+        self.next_hex = (0, 0)
 
     def __repr__(self):
         return self.__class__.__name__ + repr((self.hexsize, self.size))
@@ -387,17 +396,22 @@ class HexPage:
                        (left, top,
                         left + self.hexsize[0], top + self.hexsize[1]))
 
-    def _mark(self, target, shift=(0,0)):
-        """Mark the given grid location used."""
+    def used(self, target, shift=(0,0)):
+        """Return boolean indicating if the target hex is occupied."""
         try:
-            if self.filled[target[0] + shift[0]][target[1] + shift[1]]:
-                raise HexPageOverlapError
-        except HexPageOverlapError:
-            raise
+            return self.filled[target[0] + shift[0]][target[1] + shift[1]]
         except IndexError:
-            raise HexPageOverlapError
-        self.filled[target[0] + shift[0]][target[1] + shift[1]] = True
+            pass #raise HexPageOverflowError
+        raise HexPageOverflowError
 
+    def _mark(self, target, offsets=[(0,0)]):
+        """Mark the given grid location used, atomically."""
+        for shift in offsets:
+            if self.used(target, shift):
+                raise HexPageOverlapError
+        for shift in offsets:
+            self.filled[target[0] + shift[0]][target[1] + shift[1]] = True
+        
     def _resize(self, image, imagesize, targetbox):
         """Return a copy of image, resized to fix into targetbox."""
         imagewidth = imagesize[0]
@@ -496,6 +510,47 @@ class HexPage:
         """
         _hex = self._gethexdraw(target)
         loc = _hex.draw_multi(size, shape)
-        for shift in loc.offsets_used:
-            self._mark(target, shift)
+        self._mark(target, loc.offsets_used)
         self._place(loc, image, letter, letterfill)
+
+    def _increment(self, next_hex):
+        next_hex = (next_hex[0] + 1, next_hex[1])
+        if next_hex[0] >= self.size[0]:
+            next_hex = (0, next_hex[1] + 1)
+            if next_hex[1] >= self.size[1]:
+                raise HexPageOverflowError
+        return next_hex
+                
+    def _next_available(self, next_hex):
+        while self.used(next_hex):
+            next_hex = self._increment(next_hex)
+        return next_hex
+
+    def add(self, size, shape=HexDraw.SHAPE_LONG,
+            image=None, letter=None, letterfill=(0, 0, 0, 255)):
+        """Place a multi-hex at the next available location.
+
+        Arguments:
+          size -- number of total hexes to place
+          shape -- special shape type (default: HexDraw.SHAPE_LONG)
+          image -- character image to place on multi-hex (default: None)
+          letter -- string to place over the character image (default: None)
+          letterfill -- RGBA color of letter (default: black)
+
+        Return value: chosen grid location for root hex
+
+        Naive algorithm, uses a greedy approach to add shapes one at a time.
+        """
+        next_hex = self.next_hex
+        while True:
+            try:
+                self.place(next_hex, size, shape, image, letter, letterfill)
+            except (HexPageOverlapError, HexPageOverflowError):
+                next_hex = self._next_available(self._increment(next_hex))
+            else:
+                try:
+                    self.next_hex = self._next_available(self.next_hex)
+                except HexPageOverflowError:
+                    pass
+                return next_hex
+
