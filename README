@@ -1,0 +1,6 @@
+Hexify is a utility created for the Elven Fire fantasy adventure game, to simplify the formatting of character avatars to print.
+
+Hexify is built with:
+  Python 3.3.4
+  PyQt 4.10.4
+  Pillow 2.4.0
