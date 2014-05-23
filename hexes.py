@@ -3,15 +3,19 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 class HexPageOverlapError(Exception):
+    """Hexes placed here overlap existing hexes."""
     pass
 
 class HexPageOverflowError(Exception):
+    """Hexes placed here fall off the HexPage."""
     pass
 
 class InvalidHexShapeError(Exception):
+    """No known hex configuration for this shape at the current size."""
     pass
 
 class InvalidHexSizeError(Exception):
+    """No known hex configuration for this size."""
     pass
 
 
@@ -47,11 +51,14 @@ class HexDraw:
     
     """Used to draw hexes, one (color-shaded) side at a time.
 
-    Directional (static)S variables NORTH, NORTHEAST, SOUTHEAST, SOUTH, SOUTHWEST,
+    Directional class constants NORTH, NORTHEAST, SOUTHEAST, SOUTH, SOUTHWEST,
     and NORTHWEST available to refer to sides of the final hex.
 
-    Static variables BACK_COLOR, FRONT_COLOR, SIDE_COLOR, BG_COLOR,
+    Class constants BACK_COLOR, FRONT_COLOR, SIDE_COLOR, BG_COLOR,
     and OUTLINE_COLOR available describing standard colors.
+
+    Class constants SHAPE_LONG, SHAPE_ROUND, SHAPE_WAVY, and SHAPE_CURLY
+    available to customize hex configuration.
 
     Public methods:
       fill(color) -- fill the entire hex area with the given color
@@ -59,32 +66,33 @@ class HexDraw:
       side(side, fill, outline) -- color and/or outline one side of the hex
       shade(fronts, sides, backs) -- shade multiple sides at once
       shift(direction, distance) -- move on to an adjacent hex
+      measure(size, shape) -- measure a multi-hex area and return its placement
       draw_multi(size, shape) -- draw a multi-hex area and return its placement
 
     """
 
     # Side enumeration
-    NORTH = 0
-    NORTHEAST = 1
-    SOUTHEAST = 2
-    SOUTH = 3
-    SOUTHWEST = 4
-    NORTHWEST = 5
-    EAST = 6  #: directly right (two columns over)
-    WEST = 7  #: directly left (two columns over)
+    NORTH = 0                           #: directly up
+    NORTHEAST = 1                       #: up and to the right
+    SOUTHEAST = 2                       #: down and to the right
+    SOUTH = 3                           #: directly down
+    SOUTHWEST = 4                       #: down and to the left
+    NORTHWEST = 5                       #: up and to the left
+    EAST = 6                            #: directly right (two columns over)
+    WEST = 7                            #: directly left (two columns over)
 
     # Standard colors
-    BACK_COLOR = (255, 100, 100, 255)
-    FRONT_COLOR = (100, 255, 100, 255)
-    SIDE_COLOR = (255, 255, 100, 255)
-    BG_COLOR = (255, 255, 255, 255)
-    OUTLINE_COLOR = (0, 0, 0, 255)
+    BACK_COLOR = (255, 100, 100, 255)   #: red shading to a creature's rear
+    FRONT_COLOR = (100, 255, 100, 255)  #: green shading in the front hexes
+    SIDE_COLOR = (255, 255, 100, 255)   #: yellow shading at each side
+    BG_COLOR = (255, 255, 255, 255)     #: solid background inside a hex
+    OUTLINE_COLOR = (0, 0, 0, 255)      #: thin outline of the hex shape
 
     # Multi-hex shape options
-    SHAPE_LONG = 0
-    SHAPE_ROUND = 1
-    SHAPE_WAVY = 2
-    SHAPE_CURLY = 3
+    SHAPE_LONG = 0                      #: long and straight
+    SHAPE_ROUND = 1                     #: circle-like
+    SHAPE_WAVY = 2                      #: back and forth on a semi-line
+    SHAPE_CURLY = 3                     #: curl around and up
 
 
     ## Basic Geometry Calculations ##
@@ -173,7 +181,7 @@ class HexDraw:
 
     ## High-Level Draw with Standard Colors ##
             
-    def shade(self, fronts=None, sides=None, backs=None, fill=True):
+    def shade(self, fronts=None, sides=None, backs=None, fill=True, shadow=False):
         """Shade and outline all desired sides at once.
 
         Arguments:
@@ -182,6 +190,7 @@ class HexDraw:
           backs -- tuple of HexDraw sides to mark with BACK_COLOR (optional)
           fill -- boolean to include drawing the background (default: True)
         """
+        if shadow: return  # check once here rather than every call in draw_multi
         if fill:
             self.fill(HexDraw.BG_COLOR)
         if fronts is not None:
@@ -250,6 +259,10 @@ class HexDraw:
                 right - int(width / 12),    # intersection w/hex
                 bottom - int(height / 3))   # 2/3 down
 
+    def measure(self, size, shape=0, **kwargs):
+        """Measure a potential multi-hex here; return its HexImagePlacement."""
+        return self.draw_multi(size, shape, shadow=True, **kwargs)
+
     def draw_multi(self, size, shape=0, **kwargs):
         """Draw a multi-hex area and return its HexImagePlacement.
 
@@ -261,9 +274,6 @@ class HexDraw:
 
         Additional keyword arguments will be passed to the shade function:
           fill -- whether to color the hex backdrop (default: True)
-
-        This is a lazy function, and may move the HexDraw incidental to the
-        draw operation.
         """
         
         if size == 1:
@@ -347,19 +357,28 @@ class HexPage:
     """Manages an Image consisting of a page of hex creatures.
 
     Methods:
+      used -- return a boolean: is there something here already?
       place -- place a hex shape at a specific location
       add -- place a hex shape at the next available location
+      arrange -- place a list of HexifiedImages intelligently
+
+    Attributes:
+      image -- the page Image so far
+      size -- number of (rows, columns) on the page
+      hexsize -- number of pixels (x, y) in each hex's bounding box
     """
 
     BG_COLOR = (200, 200, 200, 0)
+    """The background fill for the page."""
 
-    def __init__(self, hexsize=(180, 180), pagesize=(11, 13), blanks=False):
+    def __init__(self, hexsize=(180, 180), pagesize=(11, 13), blanks=False, background=BG_COLOR):
         """Create a blank hex grid.
 
         Arguments:
           hexsize -- size of a single hex's bounding box in pixels (x, y)
           pagesize -- number of (rows, columns) on the page
           blanks -- if True, first fill page with empty hexes (default: False)
+          background -- RGBA color to fill the page (default: HexPage.BG_COLOR)
         """
         self.hexsize = hexsize
         self.size = pagesize
@@ -367,7 +386,7 @@ class HexPage:
                     "RGBA",
                     (int(hexsize[0] + hexsize[0] * (pagesize[0] - 1) * 3 / 4),
                      hexsize[1] * pagesize[1] + int(hexsize[1] / 2)),
-                    HexPage.BG_COLOR)
+                    background)
         self.draw = ImageDraw.Draw(self.image)
         self.filled = [[False,] * pagesize[1] for i in range(pagesize[0])]
         if blanks:
@@ -509,8 +528,9 @@ class HexPage:
           letterfill -- RGBA color of letter (default: black)
         """
         _hex = self._gethexdraw(target)
-        loc = _hex.draw_multi(size, shape)
-        self._mark(target, loc.offsets_used)
+        loc = _hex.measure(size, shape)
+        self._mark(target, loc.offsets_used)  # raises HexOver*Error
+        _hex.draw_multi(size, shape)
         self._place(loc, image, letter, letterfill)
 
     def _increment(self, next_hex):
@@ -553,4 +573,47 @@ class HexPage:
                 except HexPageOverflowError:
                     pass
                 return next_hex
+
+    def arrange(self, images):
+        """Attempt to place a list of HexifiedImages on the page."""
+        for i in sorted(images, reverse=True):
+            self.add(i.size, i.shape, i.image, i.letter)
+
+
+class HexifiedImage:
+
+    """A single hexified image, ready for placement on a page."""
+
+    def __init__(self, image, letter, size=1, shape=HexDraw.SHAPE_LONG):
+        self.image = image
+        self.letter = letter
+        self.size = size
+        self.shape = shape
+
+    def __getattr__(self, name):
+        """Re-generate preview with each access (if needed)."""
+        if name == "preview":
+            self.preview = self._create_preview()
+            return self.preview
+
+    def __setattr__(self, name, value):
+        """Mark the saved preview out of date when inputs change."""
+        if (name in ["size", "shape", "image", "letter"]):
+            try:
+                del self.__dict__["preview"]
+            except KeyError:
+                pass
+        object.__setattr__(self, name, value)
+
+    def _create_preview(self):
+        """Generate and return a preview image."""
+        page = HexPage((64, 64), (self.size, self.size), background=(0,0,0,0))
+        page.place((0,0), self.size, self.shape, self.image, self.letter)
+        return page.image.crop(page.image.getbbox())
+
+    def __lt__(self, other):
+        """Sort by size (then by shape)."""
+        if self.size == other.size:
+            return self.shape < other.shape
+        return self.size < other.size
 
