@@ -278,6 +278,8 @@ class HexDraw:
         
         if size == 1:
             """Draw a single hex, facing NORTH."""
+            if shape != HexDraw.SHAPE_LONG:
+                raise InvalidHexShapeError
             self.shade(fronts=(HexDraw.NORTHWEST, HexDraw.NORTH, HexDraw.NORTHEAST),
                        sides=(HexDraw.SOUTHEAST, HexDraw.SOUTHWEST),
                        backs=(HexDraw.SOUTH,),
@@ -287,6 +289,8 @@ class HexDraw:
 
         elif size == 2:
             """Draw two vertical hexes, facing NORTH."""
+            if shape != HexDraw.SHAPE_LONG:
+                raise InvalidHexShapeError
             self.shade(fronts=(HexDraw.NORTHWEST, HexDraw.NORTH,
                                HexDraw.NORTHEAST),
                        sides=(HexDraw.SOUTHEAST, HexDraw.SOUTHWEST),
@@ -484,16 +488,20 @@ class HexPage:
                     targetbox = self._center(image.size, targetbox)
                 self.image.paste(image, targetbox, image)
         if letter is not None:
+            def _fontsize(font, letter):
+                size = font.getsize(letter)
+                off = font.getoffset(letter)
+                return (size[0] + off[0], size[1] + off[1])
             fontsize = 14
             font = ImageFont.truetype("arial.ttf", fontsize)
-            fontboxsize = self.draw.textsize(letter, font=font)
+            fontboxsize = _fontsize(font, letter)
             target_width = loc.letter_rect[2] - loc.letter_rect[0]
             target_height = loc.letter_rect[3] - loc.letter_rect[1]
             while (fontboxsize[0] < target_width * 3 / 4 and
                    fontboxsize[1] < target_height * 3 / 4):
                 fontsize += 1
                 font = ImageFont.truetype("arial.ttf", fontsize)
-                fontboxsize = self.draw.textsize(letter, font=font)
+                fontboxsize = _fontsize(font, letter)
             while (fontboxsize[0] > target_width or
                    fontboxsize[1] > target_height):
                 fontsize -= 1
@@ -501,8 +509,7 @@ class HexPage:
                     fontsize = 6
                     break
                 font = ImageFont.truetype("arial.ttf", fontsize)
-                fontboxsize = self.draw.textsize(letter, font=font)
-            fontboxsize = (fontboxsize[0]+10, fontboxsize[1]+10)
+                fontboxsize = _fontsize(font, letter)
             targetbox = self._center(fontboxsize, loc.letter_rect)
             if loc.rotation != 0:
                 letterimage = Image.new("RGBA", fontboxsize, (0, 0, 0, 0))
@@ -589,12 +596,17 @@ class HexifiedImage:
         self.letter = letter
         self.size = size
         self.shape = shape
+        self.preview  # validate
 
     def __getattr__(self, name):
         """Re-generate preview with each access (if needed)."""
         if name == "preview":
             self.preview = self._create_preview()
             return self.preview
+        elif name == "fontpreview":
+            self.fontpreview = self._create_font_preview()
+            return self.fontpreview
+        raise NameError
 
     def __setattr__(self, name, value):
         """Mark the saved preview out of date when inputs change."""
@@ -603,13 +615,40 @@ class HexifiedImage:
                 del self.__dict__["preview"]
             except KeyError:
                 pass
+        if (name in ["letter"]):
+            try:
+                del self.__dict__["fontpreview"]
+            except KeyError:
+                pass
         object.__setattr__(self, name, value)
 
     def _create_preview(self):
         """Generate and return a preview image."""
         page = HexPage((64, 64), (self.size, self.size), background=(0,0,0,0))
-        page.place((0,0), self.size, self.shape, self.image, self.letter)
+        try:
+            page.place((0,0), self.size, self.shape, self.image, self.letter)
+        except InvalidHexSizeError:
+            if self.size < 1:
+                self.size = 1
+            else:
+                self.size -= 1
+            return self._create_preview()
+        except InvalidHexShapeError:
+            self.shape += 1
+            if self.shape > HexDraw.SHAPE_CURLY:
+                self.shape = HexDraw.SHAPE_LONG
+            return self._create_preview()
         return page.image.crop(page.image.getbbox())
+
+    def _create_font_preview(self, fontsize=112, color=(0, 0, 0, 255)):
+        """Generate and return a simple letter image."""
+        font = ImageFont.truetype("arial.ttf", fontsize)
+        size = font.getsize(self.letter)
+        offset = font.getoffset(self.letter)
+        image = Image.new("RGBA", (size[0] + offset[0], size[1] + offset[1]))
+        draw = ImageDraw.Draw(image)
+        draw.text((0, 0), self.letter, font=font, fill=color)
+        return image.crop(image.getbbox())
 
     def __lt__(self, other):
         """Sort by size (then by shape)."""
