@@ -5,13 +5,16 @@ from PIL import ImageQt
 from hexes import *
 
 
+VERSION = '0.0.0'
+
+
 class HexifiedImageWidget(QtGui.QWidget):
 
     """Horizontal bar representing one hexified image and its actions."""
 
     ## Build the UI ##
 
-    def __init__(self, parent, hexified_image):
+    def __init__(self, parent, main, hexified_image):
 
         def make_button(size, layout, image, action=None):
             btn = QtGui.QPushButton(self)
@@ -23,23 +26,29 @@ class HexifiedImageWidget(QtGui.QWidget):
             return btn
         
         QtGui.QWidget.__init__(self, parent)
+        self.main = main
         self.hexed = hexified_image
+        self._confirmed = False
+        if (self.hexed.image is None):
+            self.hexed.image = Image.new("RGBA", (100, 100))
         mbox = QtGui.QHBoxLayout()
         self.setLayout(mbox)
 
         def new_button(image, action=None):
             return make_button((100, 100), mbox, image, action)
-        self._preview = new_button(self.hexed.preview, self.next_hex_configuration)
+        self._preview = new_button(self.hexed.preview,
+                                   self.next_hex_configuration)
         self._image = new_button(self.hexed.image, self.select_image)
-        self._fontpreview = new_button(self.hexed.fontpreview, self.randomize_letter)
+        self._fontpreview = new_button(self.hexed.fontpreview,
+                                       self.randomize_letter)
 
         vbox = QtGui.QVBoxLayout()
         mbox.addLayout(vbox)
 
         def new_small(image, action=None):
             return make_button((43, 43), vbox, image, action)
-        new_small(HexifiedImageWidget.CheckMark())
-        new_small(HexifiedImageWidget.TrashCan())
+        new_small(HexifiedImageWidget.CheckMark(), self.toggle_confirm)
+        new_small(HexifiedImageWidget.TrashCan(), self.deleteLater)
 
         
 
@@ -60,24 +69,6 @@ class HexifiedImageWidget(QtGui.QWidget):
                                       int(image.size[1] * factor)))
             pixmap = QtGui.QPixmap.fromImage(ImageQt.ImageQt(image))
             button.setIcon(QtGui.QIcon(pixmap))
-        
-    def show(self):
-        self.window_ = QtGui.QMainWindow()
-        self.window_.setWindowTitle('HexifiedImage')
-        self.window_.setCentralWidget(self)
-        self.center()
-        self.window_.show()
-
-    def center(self):
-        screen = QtGui.QDesktopWidget().screenGeometry()
-        size = self.window_.geometry()
-        width = min(size.width(), int(screen.width() * .9))
-        height = min(size.height(), int(screen.height() * .9))
-        if width != size.width() or height != size.height():
-            self.window_.resize(width, height)
-            size = self.window_.geometry()
-        self.window_.move((screen.width() - size.width()) / 2,
-                          (screen.height() - size.height()) / 2)
 
 
     ## Custom Images ##
@@ -127,18 +118,14 @@ class HexifiedImageWidget(QtGui.QWidget):
                 self.hexed.preview
         self._show_image(self.hexed.preview, self._preview)
 
-    def __getattr__(self, name):
-        if name == "cwd":
-            return os.getcwd()
-        raise NameError
-
     def select_image(self):
         """Allow the user to select an image."""
         file = QtGui.QFileDialog.getOpenFileName(self,
-                                                 "Select An Image", self.cwd,
+                                                 "Select An Image",
+                                                 self.main.cwd,
                                                  "Images (*.png *.xpm *.jpg)")
         if os.path.isfile(file):
-            self.cwd = os.path.dirname(file)
+            self.main.cwd = os.path.dirname(file)
             image = Image.open(file)
             image = image.convert("RGBA")
             self.set_image(image)
@@ -166,10 +153,105 @@ class HexifiedImageWidget(QtGui.QWidget):
         self.hexed.shape = shape
         self._show_image(self.hexed.preview, self._preview)
 
+    def toggle_confirm(self):
+        """Toggle disabling of future edits."""
+        self._preview.setEnabled(self._confirmed)
+        self._image.setEnabled(self._confirmed)
+        self._fontpreview.setEnabled(self._confirmed)
+        
+        self._confirmed = not self._confirmed
+        self.main.confirm(self, self._confirmed)
+        
+
+class HexifyWidget(QtGui.QWidget):
+
+    def __init__(self):
+        QtGui.QWidget.__init__(self, None)
+        mbox = QtGui.QHBoxLayout()
+        self.setLayout(mbox)
+
+        # List of HexifiedItems
+        scrollArea = QtGui.QScrollArea(self)
+        scrollArea.setWidgetResizable(True)
+        self.scroller = QtGui.QWidget(scrollArea)
+        vbox = QtGui.QVBoxLayout()
+        self.scroller.setLayout(vbox)
+        scrollArea.setWidget(self.scroller)
+        mbox.addWidget(scrollArea)
+        vbox.addStretch()
+
+        # Control panel
+        vbox = QtGui.QVBoxLayout()
+        mbox.addLayout(vbox)
+        def new_button(name, action=None):
+            btn = QtGui.QPushButton(name, self)
+            if action is not None:
+                btn.clicked.connect(action)
+            vbox.addWidget(btn)
+        new_button("Add Images", self.select_images)
+        #new_button("Print")
+        #new_button("Clear All")
+
+        # Page preview
+
+        
+    def show(self):
+        self.window_ = QtGui.QMainWindow()
+        self.window_.setWindowTitle('Hexifyv%s' % VERSION)
+        self.window_.setCentralWidget(self)
+        self.center()
+        self.window_.show()
+
+    def center(self):
+        screen = QtGui.QDesktopWidget().screenGeometry()
+        size = self.window_.geometry()
+        width = min(size.width(), int(screen.width() * .9))
+        height = min(size.height(), int(screen.height() * .9))
+        if width != size.width() or height != size.height():
+            self.window_.resize(width, height)
+            size = self.window_.geometry()
+        self.window_.move((screen.width() - size.width()) / 2,
+                          (screen.height() - size.height()) / 2)
+
+
+    ## Actions & Updates ##
+
+    def __getattr__(self, name):
+        if name == "cwd":
+            return os.getcwd()
+        raise NameError
+
+    def select_images(self):
+        """Allow the user to select one or more images to add."""
+        files = QtGui.QFileDialog.getOpenFileNames(self,
+                                                   "Select Your Image(s)",
+                                                   self.cwd,
+                                                   "Images (*.png *.xpm *.jpg)")
+        for file in files:
+            if os.path.isfile(file):
+                self.cwd = os.path.dirname(file)
+                image = Image.open(file)
+                image = image.convert("RGBA")
+                self.add_image(HexifiedImage(image, os.path.basename(file)[0]) )
+
+    def add_image(self, hexed):
+        """Add a HexifiedImage to the displayed list."""
+        widget = HexifiedImageWidget(self.scroller, self, hexed)
+        layout = self.scroller.layout()
+        layout.insertWidget(layout.count() - 1, widget)
+
+    def confirm(self, widget, confirm):
+        """Update confirmation status of a HexifiedImageWidget."""
+        layout = self.scroller.layout()
+        if confirm:
+            layout.insertWidget(layout.count() - 2, widget)
+        else:
+            layout.insertWidget(0, widget)
+            
+        
 
 if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)
-    h = HexifiedImageWidget(None, HexifiedImage(Image.new("RGBA", (100, 100)), " "))
-    h.show()
+    HexifyWidget().show()
     sys.exit(app.exec_())
 
