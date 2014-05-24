@@ -236,6 +236,7 @@ class HexifyWidget(QtGui.QWidget):
             if action is not None:
                 btn.clicked.connect(action)
             layout.addWidget(btn)
+            return btn
             
         QtGui.QWidget.__init__(self, None)
         self.setAcceptDrops(True)
@@ -278,6 +279,7 @@ class HexifyWidget(QtGui.QWidget):
         scrollArea.setWidget(self.scroller)
         lbox.addWidget(scrollArea)
         vbox.addStretch()
+        self._confirmed_count = 0
 
         # Temporary HexifiedImageWidget for sizing
         temp = HexifiedImageWidget(self.scroller, self, HexifiedImage(None, " "))
@@ -291,10 +293,20 @@ class HexifyWidget(QtGui.QWidget):
         new_button("Save as PNG", vbox, self.export_PNG)
         new_button("Export to PDF", vbox, self.export_PDF)
         new_button("Print", vbox, self.print_dialog)
-
+        
         # Page preview
         self._pagepreview = QtGui.QLabel(self)
-        vbox.addWidget(self._pagepreview)
+        vbox.addWidget(self._pagepreview, alignment=QtCore.Qt.AlignBottom)
+        hbox = QtGui.QHBoxLayout()
+        vbox.addLayout(hbox)
+        b = new_button("<", hbox, self.prev_preview_page)
+        b.setMaximumWidth(25)
+        self._pagepreviewlabel = QtGui.QLabel(self)
+        self._pagepreviewlabel.setAlignment(QtCore.Qt.AlignCenter)
+        hbox.addWidget(self._pagepreviewlabel)
+        b = new_button(">", hbox, self.next_preview_page)
+        b.setMaximumWidth(25)
+        self._preview_page = 0
         self.update_page()
         
     def show(self):
@@ -369,15 +381,18 @@ class HexifyWidget(QtGui.QWidget):
         widget = HexifiedImageWidget(self.scroller, self, hexed)
         widget.destroyed.connect(self.update_page)
         layout = self.scroller.layout()
-        layout.insertWidget(layout.count() - 1, widget)
+        layout.insertWidget(layout.count() - self._confirmed_count - 1, widget)
         self.update_page()
 
     def confirm(self, widget, confirm):
         """Update confirmation status of a HexifiedImageWidget."""
         layout = self.scroller.layout()
         if confirm:
-            layout.insertWidget(layout.count() - 2, widget)
+            self._confirmed_count += 1
+            layout.insertWidget(layout.count() - self._confirmed_count - 1,
+                                widget)
         else:
+            self._confirmed_count -= 1
             layout.insertWidget(0, widget)
             self.scroller.parent().parent().ensureVisible(0, 0)
 
@@ -417,31 +432,61 @@ class HexifyWidget(QtGui.QWidget):
                 widget.deleteLater()
 
 
-    ## Exporting ##
+    ## Page Preview ##
 
-    def _get_page(self, hexsize=(300, 300)):
-        """Get and populate a page for printing."""
-        page = HexPage(hexsize, (10, 10), blanks=True, background=(255, 255, 255, 255))
-        page.arrange([i.hexed for i in self._get_items()])
-        return page
-        
+    def _get_pages(self, hexsize=(300, 300)):
+        """Get and populate one or more pages for printing."""
+        pages = HexPage.Arrange([i.hexed for i in self._get_items()],
+                                hexsize, (10, 10), blanks=True,
+                                background=(255, 255, 255, 255))
+        if pages == []:
+            pages.append(HexPage(hexsize, (10, 10), blanks=True,
+                                 background=(255, 255, 255, 255)))
+        return pages
+
     def update_page(self):
         """Update the page preview after a change."""
-        page = self._get_page((32, 32))
-        pixmap = QtGui.QPixmap.fromImage(ImageQt.ImageQt(page.image))
+        self._pages = self._get_pages((32, 32))
+        if self._preview_page >= len(self._pages):
+            self._preview_page = len(self._pages) - 1
+        self._show_page_preview()
+
+    def _show_page_preview(self):
+        """Display the selected preview page."""
+        image = self._pages[self._preview_page].image
+        pixmap = QtGui.QPixmap.fromImage(ImageQt.ImageQt(image))
         self._pagepreview.setPixmap(pixmap)
+        self._pagepreviewlabel.setText("Page %s of %s"
+                                       % (self._preview_page + 1, len(self._pages)))
+
+    def next_preview_page(self):
+        """Advance to the next page of the preview."""
+        self._preview_page += 1
+        if self._preview_page >= len(self._pages):
+            self._preview_page = 0
+        self._show_page_preview()
+
+    def prev_preview_page(self):
+        """Return to the previous page of the preview."""
+        self._preview_page -= 1
+        if self._preview_page < 0:
+            self._preview_page = len(self._pages) - 1
+        self._show_page_preview()
+
+
+    ## Exporting ##
 
     def export_PNG(self):
-        """Export the filled page to PNG format."""
-        page = self._get_page()
-        file = QtGui.QFileDialog.getSaveFileName(self, "Save As...",
+        """Export the current page to PNG format."""
+        page = self._get_pages()[self._preview_page]
+        file = QtGui.QFileDialog.getSaveFileName(self, "Save Current Page As...",
                                                  self.cwd, "*.png")
         if file:
             page.image.save(file)
 
     def export_PDF(self):
-        """Export the filled page to PDF format."""
-        file = QtGui.QFileDialog.getSaveFileName(self, "Save As...",
+        """Export the filled pages to PDF format."""
+        file = QtGui.QFileDialog.getSaveFileName(self, "Save All Pages As...",
                                                  self.cwd, "*.pdf")
         if file:
             printer = QtGui.QPrinter()
@@ -458,14 +503,18 @@ class HexifyWidget(QtGui.QWidget):
 
     def _print(self, printer):
         """Send a page to the printer."""
-        page = self._get_page()
         printer.setResolution(300)
         printer.setFullPage(True)
         printer.setPageMargins(.25, .25, .5, .25, QtGui.QPrinter.Inch)
         painter = QtGui.QPainter()
         painter.begin(printer)
+        pages = self._get_pages()
+        for page in pages[:-1]:
+            painter.drawImage(QtCore.QPointF(0, 0),
+                              ImageQt.ImageQt(page.image))
+            printer.newPage()
         painter.drawImage(QtCore.QPointF(0, 0),
-                          ImageQt.ImageQt(page.image))
+                              ImageQt.ImageQt(pages[-1].image))
         painter.end()
             
         

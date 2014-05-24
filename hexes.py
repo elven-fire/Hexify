@@ -375,6 +375,30 @@ class HexPage:
     BG_COLOR = (200, 200, 200, 0)
     """The background fill for the page."""
 
+    def Arrange(items, *args, **kwargs):
+        """Arrange HexifiedImage items on one or more pages.
+
+        Arguments:
+          items -- list of HexifiedImages to place
+        Additional arguments will be passed to each HexPage instance.
+
+        Return value:
+          list of HexPages containing the items
+
+        Raises HexPageOverflowError if there is an item that -- on its own --
+        will not fit on a HexPage of the given size.
+        """
+        pages = []
+        last_items = items
+        while items:
+            page = HexPage(*args, **kwargs)
+            items = page.arrange(items)
+            if items == last_items:
+                raise HexPageOverflowError  # item(s) won't fit at all
+            last_items = items
+            pages.append(page)
+        return pages
+
     def __init__(self, hexsize=(180, 180), pagesize=(11, 13), blanks=False, background=BG_COLOR):
         """Create a blank hex grid.
 
@@ -582,9 +606,15 @@ class HexPage:
                 return next_hex
 
     def arrange(self, images):
-        """Attempt to place a list of HexifiedImages on the page."""
+        """Attempt to place a list of HexifiedImages on the page.
+        Return a list of any images that didn't fit."""
+        extras = []
         for i in sorted(images, reverse=True):
-            self.add(i.size, i.shape, i.image, i.letter)
+            try:
+                self.add(i.size, i.shape, i.image, i.letter)
+            except HexPageOverflowError:
+                extras.append(i)
+        return extras
 
 
 class HexifiedImage:
@@ -597,6 +627,32 @@ class HexifiedImage:
         self.size = size
         self.shape = shape
         self.preview  # validate
+
+    def __lt__(self, other):
+        """Sort by size (then by shape)."""
+        if self.size == other.size:
+            return self.shape < other.shape
+        return self.size < other.size
+
+    def __eq__(self, other):
+        """Compare critical attributes."""
+        try:
+            return self._get_crits() == other._get_crits()
+        except AttributeError:
+            return False
+
+    def __repr__(self):
+        return self.__class__.__name__ + repr((self.image, self.letter, self.size, self.shape))
+
+    def __str__(self):
+        return repr(self)
+
+    def _get_crits(self):
+        """Return a tuple of all critical attributes."""
+        image = self.image
+        if image is not None:
+            image = image.histogram()
+        return (image, self.letter, self.size, self.shape)
 
     def __getattr__(self, name):
         """Re-generate preview with each access (if needed)."""
@@ -649,10 +705,4 @@ class HexifiedImage:
         draw = ImageDraw.Draw(image)
         draw.text((0, 0), self.letter, font=font, fill=color)
         return image.crop(image.getbbox())
-
-    def __lt__(self, other):
-        """Sort by size (then by shape)."""
-        if self.size == other.size:
-            return self.shape < other.shape
-        return self.size < other.size
 
