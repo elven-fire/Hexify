@@ -8,6 +8,57 @@ from hexes import *
 VERSION = '0.0.0'
 
 
+
+def _show_image(image, widget):
+    """Place the Image onto the QPushButton."""
+    if image is not None:
+        if image.mode != "RGBA":
+            image = image.convert("RGBA")
+        bh, bw = (widget.iconSize().height() * .8,
+                  widget.iconSize().width() * .8)
+        if (image.size[0] < bw * 3 / 4 and
+            image.size[1] < bh * 3 / 4):
+            factor = bw / image.size[0]
+            hfactor = bh / image.size[1]
+            if hfactor < factor:
+                factor = hfactor
+            image = image.resize((int(image.size[0] * factor),
+                                  int(image.size[1] * factor)))
+        pixmap = QtGui.QPixmap.fromImage(ImageQt.ImageQt(image))
+        widget.setIcon(QtGui.QIcon(pixmap))
+        
+
+def CheckMark():
+    """Create and return a simple green checkmark image."""
+    image = Image.new("RGBA", (100, 100))
+    draw = ImageDraw.Draw(image)
+    draw.polygon([ 5, 45,  5, 50, 30, 90, 50, 90, 90, 15,
+                    90, 10, 70, 10, 40, 70, 25, 45,  5, 45],
+                    fill=(50, 255, 0, 255), outline=(0, 100, 0, 255))
+    return image
+CHECK_MARK = CheckMark()
+
+def TrashCan():
+    """Create and return a simple red trash can image."""
+    base = (200, 0, 0, 255)
+    line = (100, 0, 0, 255)
+    image = Image.new("RGBA", (100, 100))
+    draw = ImageDraw.Draw(image)
+    draw.polygon((10, 15, 90, 15, 80, 90, 20, 90, 10, 15), fill=base)
+    draw.line((10, 15, 20, 90), fill=line)
+    draw.line((90, 15, 80, 90), fill=line)
+    draw.chord((20, 82, 80, 98), 0, 180, fill=base)
+    draw.arc((20, 82, 80, 98), 0, 180, fill=line)
+    draw.ellipse((10, 5, 90, 25), fill=base, outline=line)
+    draw.arc((13, 11, 87, 29), 0, 180, fill=line)
+    draw.line((45, 15, 55, 15), fill=line)
+    draw.line((50, 29, 50, 98), fill=line)
+    draw.line((30, 28, 35, 94), fill=line)
+    draw.line((70, 28, 65, 94), fill=line)
+    return image
+TRASH_CAN = TrashCan()
+
+
 class HexifiedImageWidget(QtGui.QWidget):
 
     """Horizontal bar representing one hexified image and its actions."""
@@ -47,8 +98,8 @@ class HexifiedImageWidget(QtGui.QWidget):
 
         def new_small(image, action=None):
             return make_button((43, 43), vbox, image, action)
-        new_small(HexifiedImageWidget.CheckMark(), self.toggle_confirm)
-        new_small(HexifiedImageWidget.TrashCan(), self.deleteLater)
+        new_small(CHECK_MARK, self.toggle_confirm)
+        new_small(TRASH_CAN, self.deleteLater)
 
         
 
@@ -70,37 +121,6 @@ class HexifiedImageWidget(QtGui.QWidget):
             pixmap = QtGui.QPixmap.fromImage(ImageQt.ImageQt(image))
             button.setIcon(QtGui.QIcon(pixmap))
 
-
-    ## Custom Images ##
-
-    def CheckMark():
-        """Create and return a simple green checkmark image."""
-        image = Image.new("RGBA", (100, 100))
-        draw = ImageDraw.Draw(image)
-        draw.polygon([ 5, 45,  5, 50, 30, 90, 50, 90, 90, 15,
-                      90, 10, 70, 10, 40, 70, 25, 45,  5, 45],
-                     fill=(50, 255, 0, 255), outline=(0, 100, 0, 255))
-        return image
-
-    def TrashCan():
-        """Create and return a simple red trash can image."""
-        base = (200, 0, 0, 255)
-        line = (100, 0, 0, 255)
-        image = Image.new("RGBA", (100, 100))
-        draw = ImageDraw.Draw(image)
-        draw.polygon((10, 15, 90, 15, 80, 90, 20, 90, 10, 15), fill=base)
-        draw.line((10, 15, 20, 90), fill=line)
-        draw.line((90, 15, 80, 90), fill=line)
-        draw.chord((20, 82, 80, 98), 0, 180, fill=base)
-        draw.arc((20, 82, 80, 98), 0, 180, fill=line)
-        draw.ellipse((10, 5, 90, 25), fill=base, outline=line)
-        draw.arc((13, 11, 87, 29), 0, 180, fill=line)
-        draw.line((45, 15, 55, 15), fill=line)
-        draw.line((50, 29, 50, 98), fill=line)
-        draw.line((30, 28, 35, 94), fill=line)
-        draw.line((70, 28, 65, 94), fill=line)
-        return image
-
         
     ## Actions & Updates ##
 
@@ -116,7 +136,8 @@ class HexifiedImageWidget(QtGui.QWidget):
             if size == self.hexed.size:
                 self.hexed.size = 1
                 self.hexed.preview
-        self._show_image(self.hexed.preview, self._preview)
+        _show_image(self.hexed.preview, self._preview)
+        self.main.update_page()
 
     def select_image(self):
         """Allow the user to select an image."""
@@ -138,20 +159,23 @@ class HexifiedImageWidget(QtGui.QWidget):
     def set_letter(self, letter):
         """Update the displayed letter."""
         self.hexed.letter = letter
-        self._show_image(self.hexed.preview, self._preview)
-        self._show_image(self.hexed.fontpreview, self._fontpreview)
+        _show_image(self.hexed.preview, self._preview)
+        _show_image(self.hexed.fontpreview, self._fontpreview)
+        self.main.update_page()
 
     def set_image(self, image):
         """Update the displayed image."""
         self.hexed.image = image
-        self._show_image(self.hexed.preview, self._preview)
-        self._show_image(self.hexed.image, self._image)
+        _show_image(self.hexed.preview, self._preview)
+        _show_image(self.hexed.image, self._image)
+        self.main.update_page()
 
     def set_hex_detail(self, size, shape=HexDraw.SHAPE_LONG):
         """Update the hex configuration."""
         self.hexed.size = size
         self.hexed.shape = shape
-        self._show_image(self.hexed.preview, self._preview)
+        _show_image(self.hexed.preview, self._preview)
+        self.main.update_page()
 
     def toggle_confirm(self):
         """Toggle disabling of future edits."""
@@ -165,10 +189,31 @@ class HexifiedImageWidget(QtGui.QWidget):
 
 class HexifyWidget(QtGui.QWidget):
 
+    """Primary application: display list of items and a page preview."""
+
+    ## Build the UI ##
+
     def __init__(self):
+        
+        def new_button(name, layout, action=None):
+            btn = QtGui.QPushButton(name, self)
+            if action is not None:
+                btn.clicked.connect(action)
+            layout.addWidget(btn)
+            
         QtGui.QWidget.__init__(self, None)
         mbox = QtGui.QHBoxLayout()
         self.setLayout(mbox)
+
+        # Header buttons
+        lbox = QtGui.QVBoxLayout()
+        mbox.addLayout(lbox)
+        head = QtGui.QHBoxLayout()
+        lbox.addLayout(head)
+        new_button("Re-size All", head, self.resize_all)
+        new_button("Randomize All", head, self.randomize_all)
+        new_button("Confirm All", head, self.confirm_all)
+        new_button("Delete All", head, self.delete_all)
 
         # List of HexifiedItems
         scrollArea = QtGui.QScrollArea(self)
@@ -177,32 +222,37 @@ class HexifyWidget(QtGui.QWidget):
         vbox = QtGui.QVBoxLayout()
         self.scroller.setLayout(vbox)
         scrollArea.setWidget(self.scroller)
-        mbox.addWidget(scrollArea)
+        lbox.addWidget(scrollArea)
         vbox.addStretch()
+
+        # Temporary HexifiedImageWidget for sizing
+        temp = HexifiedImageWidget(self.scroller, self, HexifiedImage(None, " "))
+        temp.deleteLater()
+        vbox.addWidget(temp)
 
         # Control panel
         vbox = QtGui.QVBoxLayout()
         mbox.addLayout(vbox)
-        def new_button(name, action=None):
-            btn = QtGui.QPushButton(name, self)
-            if action is not None:
-                btn.clicked.connect(action)
-            vbox.addWidget(btn)
-        new_button("Add Images", self.select_images)
-        #new_button("Print")
-        #new_button("Clear All")
+        new_button("Add Images", vbox, self.select_images)
+        new_button("Save as PNG", vbox, self.export_PNG)
+        new_button("Export to PDF", vbox, self.export_PDF)
+        new_button("Print", vbox, self.print_dialog)
 
         # Page preview
-
+        self._pagepreview = QtGui.QLabel(self)
+        vbox.addWidget(self._pagepreview)
+        self.update_page()
         
     def show(self):
+        """Display this QWidget as the main window."""
         self.window_ = QtGui.QMainWindow()
-        self.window_.setWindowTitle('Hexifyv%s' % VERSION)
+        self.window_.setWindowTitle('Hexify v%s' % VERSION)
         self.window_.setCentralWidget(self)
         self.center()
         self.window_.show()
 
     def center(self):
+        """Center this window on the screen."""
         screen = QtGui.QDesktopWidget().screenGeometry()
         size = self.window_.geometry()
         width = min(size.width(), int(screen.width() * .9))
@@ -237,8 +287,10 @@ class HexifyWidget(QtGui.QWidget):
     def add_image(self, hexed):
         """Add a HexifiedImage to the displayed list."""
         widget = HexifiedImageWidget(self.scroller, self, hexed)
+        widget.destroyed.connect(self.update_page)
         layout = self.scroller.layout()
         layout.insertWidget(layout.count() - 1, widget)
+        self.update_page()
 
     def confirm(self, widget, confirm):
         """Update confirmation status of a HexifiedImageWidget."""
@@ -247,6 +299,94 @@ class HexifyWidget(QtGui.QWidget):
             layout.insertWidget(layout.count() - 2, widget)
         else:
             layout.insertWidget(0, widget)
+            self.scroller.parent().parent().ensureVisible(0, 0)
+
+
+    ## Bulk actions ##
+
+    def _get_items(self):
+        """Get all HexifiedImageWidgets currently displayed."""
+        items = []
+        for widget in self.scroller.children():
+            if "hexed" in widget.__dict__:
+                items.append(widget)
+        return items
+
+    def resize_all(self):
+        """Advance all (unconfirmed) items to the next hex size/shape."""
+        for widget in self._get_items():
+            if not widget._confirmed:
+                widget.next_hex_configuration()
+
+    def randomize_all(self):
+        """Randomize all (unconfirmed) letter labels."""
+        for widget in self._get_items():
+            if not widget._confirmed:
+                widget.randomize_letter()
+
+    def confirm_all(self):
+        """Confirm all unconfirmed items."""
+        for widget in self._get_items():
+            if not widget._confirmed:
+                widget.toggle_confirm()
+
+    def delete_all(self):
+        """Remove all (unconfirmed) items."""
+        for widget in self._get_items():
+            if not widget._confirmed:
+                widget.deleteLater()
+
+
+    ## Exporting ##
+
+    def _get_page(self, hexsize=(300, 300)):
+        """Get and populate a page for printing."""
+        page = HexPage(hexsize, (10, 10), blanks=True, background=(255, 255, 255, 255))
+        page.arrange([i.hexed for i in self._get_items()])
+        return page
+        
+    def update_page(self):
+        """Update the page preview after a change."""
+        page = self._get_page((32, 32))
+        pixmap = QtGui.QPixmap.fromImage(ImageQt.ImageQt(page.image))
+        self._pagepreview.setPixmap(pixmap)
+
+    def export_PNG(self):
+        """Export the filled page to PNG format."""
+        page = self._get_page()
+        file = QtGui.QFileDialog.getSaveFileName(self, "Save As...",
+                                                 self.cwd, "*.png")
+        if file:
+            page.image.save(file)
+
+    def export_PDF(self):
+        """Export the filled page to PDF format."""
+        file = QtGui.QFileDialog.getSaveFileName(self, "Save As...",
+                                                 self.cwd, "*.pdf")
+        if file:
+            printer = QtGui.QPrinter()
+            printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
+            printer.setOutputFileName(file)
+            self._print(printer)
+
+    def print_dialog(self):
+        """Show the user a print dialog."""
+        printer = QtGui.QPrinter()
+        dialog = QtGui.QPrintDialog(printer, self)
+        if dialog.exec() == QtGui.QDialog.Accepted:
+            self._print(printer)
+
+    def _print(self, printer):
+        """Send a page to the printer."""
+        page = self._get_page()
+        printer.setResolution(300)
+        printer.setFullPage(True)
+        printer.setPageMargins(.25, .25, .5, .25, QtGui.QPrinter.Inch)
+        painter = QtGui.QPainter()
+        painter.begin(printer)
+        painter.drawImage(QtCore.QPointF(0, 0),
+                          ImageQt.ImageQt(page.image))
+        painter.end()
             
         
 
