@@ -41,7 +41,9 @@ class TestHexifiedImageWidget(unittest.TestCase):
         """Verify attributes saving GUI components properly created."""
         self.assertIsInstance(self.widget._preview, QtGui.QPushButton)
         self.assertIsInstance(self.widget._image, QtGui.QPushButton)
-        self.assertIsInstance(self.widget._image, QtGui.QPushButton)
+        self.assertIsInstance(self.widget._fontpreview, QtGui.QPushButton)
+        self.assertIsInstance(self.widget.stacker, QtGui.QStackedWidget)
+        self.assertIsInstance(self.widget._fonteditor, QtGui.QTextEdit)
 
     def test_selected(self):
         """Verify selected property."""

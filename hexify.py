@@ -132,9 +132,36 @@ class HexifiedImageWidget(QtGui.QWidget):
         self._preview = new_button(self.hexed.preview,
                                    self.next_hex_configuration)
         self._image = new_button(self.hexed.image, self.select_image)
-        self._fontpreview = new_button(self.hexed.fontpreview,
-                                       self.randomize_letter)
 
+        # Editable font preview
+        self.stacker = QtGui.QStackedWidget(self)
+        mbox.addWidget(self.stacker)
+        self._fontpreview = new_button(self.hexed.fontpreview,
+                                       self._edit_letter)
+        self.stacker.addWidget(self._fontpreview)
+        class DummyTextEdit(QtGui.QTextEdit):
+            def focusOutEvent(s, e):
+                self._editing_done()
+                QtGui.QTextEdit.focusOutEvent(s, e)
+            def keyPressEvent(s, e):
+                if e.key() in [QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return,
+                             QtCore.Qt.Key_Escape]:
+                    self._editing_done()
+                    self._fontpreview.setFocus()
+                else:
+                    QtGui.QTextEdit.keyPressEvent(s, e)
+        self._fonteditor = DummyTextEdit(self)
+        self._fonteditor.setAcceptRichText(False)
+        self._fonteditor.setTabChangesFocus(True)
+        self._fonteditor.textChanged.connect(self._letter_edited)
+        self.stacker.addWidget(self._fonteditor)
+        self.stacker.setCurrentWidget(self._fontpreview)
+
+        # Fix sizing issues with stacker
+        square_size = self._fontpreview.sizeHint().height()
+        self.stacker.setMaximumSize(QtCore.QSize(square_size, square_size))
+        self.setSizePolicy(QtGui.QSizePolicy.Preferred, QtGui.QSizePolicy.Maximum)
+        
         # Buttons to the right
         vbox = QtGui.QVBoxLayout()
         mbox.addLayout(vbox)
@@ -208,12 +235,30 @@ class HexifiedImageWidget(QtGui.QWidget):
             image = Image.open(file)
             image = image.convert("RGBA")
             self.set_image(image)
-            self.set_letter(os.path.basename(file)[0]) 
+            self.set_letter(os.path.basename(file)[0])
+
+    def _edit_letter(self):
+        """Allow the user to edit the letter."""
+        self._fonteditor.setText("")
+        #self._fonteditor.textCursor().select(QtGui.QTextCursor.Document)
+        self.stacker.setCurrentWidget(self._fonteditor)
+
+    def _letter_edited(self):
+        """Update the previews when the user types."""
+        letter = self._fonteditor.toPlainText()
+        if letter:
+            self.set_letter(letter.strip())
+
+    def _editing_done(self):
+        """Return to the preview when editing is complete."""
+        self.stacker.setCurrentWidget(self._fontpreview)
 
     def randomize_letter(self):
         """Choose a random upper-case letter."""
-        self.set_letter(chr(random.randint(65, 90)))
-
+        current = self.hexed.letter
+        while current == self.hexed.letter:
+            self.set_letter(chr(random.randint(65, 90)))
+            
     def set_letter(self, letter):
         """Update the displayed letter."""
         self.hexed.letter = letter
@@ -377,12 +422,22 @@ class HexifyWidget(QtGui.QWidget):
         self.layout().setCurrentWidget(self.main_UI)
         for url in event.mimeData().urls():
             file = url.toLocalFile()
-            try:
-                image = Image.open(file)
-                image = image.convert("RGBA")
-                self.add_image(HexifiedImage(image, os.path.basename(file)[0]))
-            except:
-                pass
+            if os.path.isfile(file):
+                self._add_file(file)
+            elif os.path.isdir(file):
+                for (path, dirs, files) in os.walk(file):
+                    for filename in files:
+                        self._add_file(os.path.join(path, filename))
+                
+    def _add_file(self, file):
+        """Attempt to add a single file."""
+        try:
+            image = Image.open(file)
+            image = image.convert("RGBA")
+            self.add_image(HexifiedImage(image, os.path.basename(file)[0]))
+        except:
+            pass
+        
 
     ## Actions & Updates ##
 
