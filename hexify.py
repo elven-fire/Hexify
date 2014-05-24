@@ -58,6 +58,40 @@ def TrashCan():
     return image
 TRASH_CAN = TrashCan()
 
+def DropImage():
+    """Create and return a "drop images here" invitation image."""
+    image = Image.new("RGBA", (750, 500))
+
+    # Text label
+    font = ImageFont.truetype("gabriola.ttf", 48)
+    text = "Drop creature images here!"
+    size = font.getsize(text)
+    offset = font.getoffset(text)
+    textimage = Image.new("RGBA", (size[0] + offset[0], size[1] + offset[1]))
+    textdraw = ImageDraw.Draw(textimage)
+    textdraw.text((0, 0), text, font=font, fill=(100, 100, 100, 255))
+    textimage = textimage.rotate(35, expand=True)
+    size = textimage.size
+    image.paste(textimage, (225, 200))
+
+    # Hex imagery
+    draw = ImageDraw.Draw(image)
+    hexer = HexDraw(draw, (200, 50, 350, 200))
+    hexer.shade(fronts=(HexDraw.SOUTHWEST, HexDraw.NORTHWEST, HexDraw.NORTH),
+                sides=(HexDraw.SOUTH, HexDraw.NORTHEAST),
+                backs=(HexDraw.SOUTHEAST,),
+                fill=False)
+    hexer.shift(HexDraw.SOUTHEAST)
+    hexer.shade(fronts=(HexDraw.NORTH, HexDraw.NORTHEAST, HexDraw.SOUTHEAST),
+                sides=(HexDraw.SOUTH, HexDraw.NORTHWEST),
+                fill=False)
+    hexer.shift(HexDraw.SOUTHWEST)
+    hexer.shade(sides=(HexDraw.NORTH, HexDraw.SOUTHEAST),
+                backs=(HexDraw.NORTHWEST, HexDraw.SOUTHWEST, HexDraw.SOUTH),
+                fill=False)
+    return image
+DROP_IMAGE = DropImage()
+
 
 class HexifiedImageWidget(QtGui.QWidget):
 
@@ -68,6 +102,7 @@ class HexifiedImageWidget(QtGui.QWidget):
     def __init__(self, parent, main, hexified_image):
 
         def make_button(size, layout, image, action=None):
+            """Setup and return a button showing the image given."""
             btn = QtGui.QPushButton(self)
             btn.setIconSize(QtCore.QSize(size[0], size[1]))
             layout.addWidget(btn)
@@ -75,7 +110,7 @@ class HexifiedImageWidget(QtGui.QWidget):
             if action is not None:
                 btn.clicked.connect(action)
             return btn
-        
+
         QtGui.QWidget.__init__(self, parent)
         self.main = main
         self.hexed = hexified_image
@@ -85,6 +120,7 @@ class HexifiedImageWidget(QtGui.QWidget):
         mbox = QtGui.QHBoxLayout()
         self.setLayout(mbox)
 
+        # Previews
         def new_button(image, action=None):
             return make_button((100, 100), mbox, image, action)
         self._preview = new_button(self.hexed.preview,
@@ -93,9 +129,9 @@ class HexifiedImageWidget(QtGui.QWidget):
         self._fontpreview = new_button(self.hexed.fontpreview,
                                        self.randomize_letter)
 
+        # Buttons to the right
         vbox = QtGui.QVBoxLayout()
         mbox.addLayout(vbox)
-
         def new_small(image, action=None):
             return make_button((43, 43), vbox, image, action)
         new_small(CHECK_MARK, self.toggle_confirm)
@@ -202,8 +238,26 @@ class HexifyWidget(QtGui.QWidget):
             layout.addWidget(btn)
             
         QtGui.QWidget.__init__(self, None)
+        self.setAcceptDrops(True)
+        stack = QtGui.QStackedLayout(self)
+
+        ## Special UI for accepting dropped files
+        self.drop_UI = QtGui.QWidget(self)
+        stack.addWidget(self.drop_UI)
+        box = QtGui.QVBoxLayout()
+        self.drop_UI.setLayout(box)
+        landing_pad = QtGui.QPushButton(self.drop_UI)
+        landing_pad.setIconSize(QtCore.QSize(750, 500))
+        _show_image(DROP_IMAGE, landing_pad)
+        box.addWidget(landing_pad)
+
+
+        ## Main UI
+        self.main_UI = QtGui.QWidget(self)
+        stack.addWidget(self.main_UI)
+        stack.setCurrentWidget(self.main_UI)
         mbox = QtGui.QHBoxLayout()
-        self.setLayout(mbox)
+        self.main_UI.setLayout(mbox)
 
         # Header buttons
         lbox = QtGui.QVBoxLayout()
@@ -264,6 +318,32 @@ class HexifyWidget(QtGui.QWidget):
                           (screen.height() - size.height()) / 2)
 
 
+    ## Drag & Drop ##
+        
+    def dragEnterEvent(self, event):
+        """Acknowledge files being dragged in."""
+        if event.mimeData().hasUrls():
+            self.layout().setCurrentWidget(self.drop_UI)
+            event.accept()
+        else:
+            event.ignore()
+
+    def dragLeaveEvent(self, event):
+        """Revert UI to normal if dragging stops."""
+        self.layout().setCurrentWidget(self.main_UI)
+
+    def dropEvent(self, event):
+        """Process dropped files."""
+        self.layout().setCurrentWidget(self.main_UI)
+        for url in event.mimeData().urls():
+            file = url.toLocalFile()
+            try:
+                image = Image.open(file)
+                image = image.convert("RGBA")
+                self.add_image(HexifiedImage(image, os.path.basename(file)[0]))
+            except:
+                pass
+
     ## Actions & Updates ##
 
     def __getattr__(self, name):
@@ -282,7 +362,7 @@ class HexifyWidget(QtGui.QWidget):
                 self.cwd = os.path.dirname(file)
                 image = Image.open(file)
                 image = image.convert("RGBA")
-                self.add_image(HexifiedImage(image, os.path.basename(file)[0]) )
+                self.add_image(HexifiedImage(image, os.path.basename(file)[0]))
 
     def add_image(self, hexed):
         """Add a HexifiedImage to the displayed list."""
