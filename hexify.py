@@ -120,6 +120,12 @@ class HexifiedImageWidget(QtGui.QWidget):
         mbox = QtGui.QHBoxLayout()
         self.setLayout(mbox)
 
+        # Selection box
+        self._selected = QtGui.QCheckBox(self)
+        self._selected.setMaximumWidth(25)
+        self._selected.stateChanged.connect(self.main.selection_changed)
+        mbox.addWidget(self._selected)
+
         # Previews
         def new_button(image, action=None):
             return make_button((100, 100), mbox, image, action)
@@ -137,6 +143,22 @@ class HexifiedImageWidget(QtGui.QWidget):
         new_small(CHECK_MARK, self.toggle_confirm)
         new_small(TRASH_CAN, self.deleteLater)
 
+    @property
+    def selected(self):
+        return self._selected.isChecked()
+
+    @selected.setter
+    def selected(self, value):
+        self._selected.setChecked(value)
+
+    @property
+    def confirmed(self):
+        return self._confirmed
+
+    @confirmed.setter
+    def confirmed(self, value):
+        if self._confirmed != value:
+            self.toggle_confirm()
         
 
     def _show_image(self, image, button):
@@ -265,10 +287,16 @@ class HexifyWidget(QtGui.QWidget):
         mbox.addLayout(lbox)
         head = QtGui.QHBoxLayout()
         lbox.addLayout(head)
-        new_button("Re-size All", head, self.resize_all)
-        new_button("Randomize All", head, self.randomize_all)
-        new_button("Confirm All", head, self.confirm_all)
-        new_button("Delete All", head, self.delete_all)
+        self._selected = QtGui.QCheckBox(self.main_UI)
+        self._selected.setMaximumWidth(25)
+        head.addWidget(self._selected)
+        self._selected.setTristate()
+        self._selected.stateChanged.connect(self._select_all)
+        self._resize_btn = new_button("Resize Selected", head, self.resize_selected)
+        self._random_btn = new_button("Randomize Selected", head, self.randomize_selected)
+        self._confirm_btn = new_button("[Un]confirm Selected", head, self.confirm_selected)
+        self._delete_btn = new_button("Delete Selected", head, self.delete_selected)
+        self._pause_selection_watch = False
 
         # List of HexifiedItems
         scrollArea = QtGui.QScrollArea(self)
@@ -392,10 +420,14 @@ class HexifyWidget(QtGui.QWidget):
             self._confirmed_count += 1
             layout.insertWidget(layout.count() - self._confirmed_count - 1,
                                 widget)
+            if self._selected.checkState() == QtCore.Qt.PartiallyChecked:
+                widget.selected = False
         else:
             self._confirmed_count -= 1
             layout.insertWidget(0, widget)
             self.scroller.parent().parent().ensureVisible(0, 0)
+            if self._selected.checkState() == QtCore.Qt.PartiallyChecked:
+                widget.selected = True
 
 
     ## Bulk actions ##
@@ -408,29 +440,76 @@ class HexifyWidget(QtGui.QWidget):
                 items.append(widget)
         return items
 
-    def resize_all(self):
-        """Advance all (unconfirmed) items to the next hex size/shape."""
+    def _set_selection_text(self, text):
+        """Update button text suffix."""
+        self._resize_btn.setText("Resize " + text)
+        self._random_btn.setText("Randomize " + text)
+        if text == "Selected":
+            self._confirm_btn.setText("[Un]confirm " + text)
+        else:
+            self._confirm_btn.setText("Confirm " + text)
+        self._delete_btn.setText("Delete " + text)
+
+    def _select_all(self):
+        """Handle a press to the "Select All" checkbox."""
+        self._set_selection_text(("Selected", "Unconfirmed", "All")
+                                 [self._selected.checkState()])
+        if self._pause_selection_watch: return
+        self._pause_selection_watch = True
+        if self._selected.checkState() == QtCore.Qt.Unchecked:
+            for widget in self._get_items():
+                widget.selected = False
+        elif self._selected.checkState() == QtCore.Qt.PartiallyChecked:
+            for widget in self._get_items():
+                widget.selected = not widget.confirmed
+        else:  # QtCore.Qt.Checked
+            for widget in self._get_items():
+                widget.selected = True
+        self._pause_selection_watch = False
+
+    def selection_changed(self):
+        """Note a widget selection change."""
+        if self._pause_selection_watch: return
+        if self._selected.checkState() != QtCore.Qt.Unchecked:
+            self._pause_selection_watch = True
+            self._selected.setCheckState(QtCore.Qt.Unchecked)
+            self._pause_selection_watch = False
+
+    def resize_selected(self):
+        """Advance each selected item to the next hex size/shape."""
         for widget in self._get_items():
-            if not widget._confirmed:
+            if widget.selected:
                 widget.next_hex_configuration()
 
-    def randomize_all(self):
-        """Randomize all (unconfirmed) letter labels."""
+    def randomize_selected(self):
+        """Randomize all selected letter labels."""
         for widget in self._get_items():
-            if not widget._confirmed:
+            if widget.selected:
                 widget.randomize_letter()
 
-    def confirm_all(self):
-        """Confirm all unconfirmed items."""
+    def confirm_selected(self):
+        """Confirm all selected items."""
+        self._pause_selection_watch = True
         for widget in self._get_items():
-            if not widget._confirmed:
+            if widget.selected:
+                if self._confirm_btn.text() == "Confirm All":
+                    if widget.confirmed: continue
                 widget.toggle_confirm()
+        self._pause_selection_watch = False
+        if self._selected.checkState() == QtCore.Qt.PartiallyChecked:
+            self._selected.setCheckState(QtCore.Qt.Checked)
+        if self._selected.checkState() == QtCore.Qt.Checked:
+            if self._confirm_btn.text() == "Unconfirm All":
+                self._confirm_btn.setText("Confirm All")
+            else:
+                self._confirm_btn.setText("Unconfirm All")
 
-    def delete_all(self):
-        """Remove all (unconfirmed) items."""
+    def delete_selected(self):
+        """Remove all selected items."""
         for widget in self._get_items():
-            if not widget._confirmed:
+            if widget.selected:
                 widget.deleteLater()
+        self._selected.setCheckState(QtCore.Qt.Unchecked)
 
 
     ## Page Preview ##
