@@ -179,10 +179,10 @@ class HexifiedImageWidget(QtGui.QWidget):
         """Allow the user to select an image."""
         file = QtGui.QFileDialog.getOpenFileName(self,
                                                  "Select An Image",
-                                                 self.main.cwd,
-                                                 "Images (*.png *.xpm *.jpg)")
+                                                 self.main.cwd_open,
+                                                 "Images (*.png *.jpg)")
         if os.path.isfile(file):
-            self.main.cwd = os.path.dirname(file)
+            self.main.cwd_open = os.path.dirname(file)
             image = Image.open(file)
             image = image.convert("RGBA")
             self.set_image(image)
@@ -359,7 +359,8 @@ class HexifyWidget(QtGui.QWidget):
     ## Actions & Updates ##
 
     def __getattr__(self, name):
-        if name == "cwd":
+        """Default separate cwd paths for opening and saving files."""
+        if name in ["cwd_open", "cwd_save"]:
             return os.getcwd()
         raise NameError
 
@@ -367,11 +368,11 @@ class HexifyWidget(QtGui.QWidget):
         """Allow the user to select one or more images to add."""
         files = QtGui.QFileDialog.getOpenFileNames(self,
                                                    "Select Your Image(s)",
-                                                   self.cwd,
-                                                   "Images (*.png *.xpm *.jpg)")
+                                                   self.cwd_open,
+                                                   "Images (*.png *.jpg)")
         for file in files:
             if os.path.isfile(file):
-                self.cwd = os.path.dirname(file)
+                self.cwd_open = os.path.dirname(file)
                 image = Image.open(file)
                 image = image.convert("RGBA")
                 self.add_image(HexifiedImage(image, os.path.basename(file)[0]))
@@ -479,16 +480,21 @@ class HexifyWidget(QtGui.QWidget):
     def export_PNG(self):
         """Export the current page to PNG format."""
         page = self._get_pages()[self._preview_page]
-        file = QtGui.QFileDialog.getSaveFileName(self, "Save Current Page As...",
-                                                 self.cwd, "*.png")
+        file = QtGui.QFileDialog.getSaveFileName(self,
+                                                 "Save Current Page As...",
+                                                 self.cwd_save,
+                                                 "Images (*.png *.jpg)")
         if file:
+            self.cwd_save = os.path.dirname(file)
             page.image.save(file)
 
     def export_PDF(self):
         """Export the filled pages to PDF format."""
         file = QtGui.QFileDialog.getSaveFileName(self, "Save All Pages As...",
-                                                 self.cwd, "*.pdf")
+                                                 self.cwd_save,
+                                                 "PDFs (*.pdf)")
         if file:
+            self.cwd_save = os.path.dirname(file)
             printer = QtGui.QPrinter()
             printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
             printer.setOutputFileName(file)
