@@ -406,12 +406,13 @@ class HexifyWidget(QtGui.QWidget):
                 self.add_image(HexifiedImage(image, os.path.basename(file)[0]))
 
     def add_image(self, hexed):
-        """Add a HexifiedImage to the displayed list."""
+        """Add a HexifiedImage to the displayed list and return its widget."""
         widget = HexifiedImageWidget(self.scroller, self, hexed)
         widget.destroyed.connect(self.update_page)
         layout = self.scroller.layout()
         layout.insertWidget(layout.count() - self._confirmed_count - 1, widget)
         self.update_page()
+        return widget
 
     def confirm(self, widget, confirm):
         """Update confirmation status of a HexifiedImageWidget."""
