@@ -380,7 +380,18 @@ class HexifyWidget(QtGui.QWidget):
         b = new_button(">", hbox, self.next_preview_page)
         b.setMaximumWidth(25)
         self._preview_page = 0
+        self._pause_updates = False
         self.update_page()
+
+    def pause_page_updates(f):
+        """Decorator to temporarily pause preview page updates."""
+        def paused_function(self, *args):
+            self._pause_updates = True
+            f(self, *args)
+            self._pause_updates = False
+            self.update_page()
+        return paused_function
+    
         
     def show(self):
         """Display this QWidget as the main window."""
@@ -417,6 +428,7 @@ class HexifyWidget(QtGui.QWidget):
         """Revert UI to normal if dragging stops."""
         self.layout().setCurrentWidget(self.main_UI)
 
+    @pause_page_updates
     def dropEvent(self, event):
         """Process dropped files."""
         self.layout().setCurrentWidget(self.main_UI)
@@ -531,19 +543,22 @@ class HexifyWidget(QtGui.QWidget):
             self._selected.setCheckState(QtCore.Qt.Unchecked)
             self._pause_selection_watch = False
 
-    def resize_selected(self):
+    @pause_page_updates
+    def resize_selected(self, *args):
         """Advance each selected item to the next hex size/shape."""
         for widget in self._get_items():
             if widget.selected:
                 widget.next_hex_configuration()
 
-    def randomize_selected(self):
+    @pause_page_updates
+    def randomize_selected(self, *args):
         """Randomize all selected letter labels."""
         for widget in self._get_items():
             if widget.selected:
                 widget.randomize_letter()
 
-    def confirm_selected(self):
+    @pause_page_updates
+    def confirm_selected(self, *args):
         """Confirm all selected items."""
         self._pause_selection_watch = True
         for widget in self._get_items():
@@ -560,7 +575,8 @@ class HexifyWidget(QtGui.QWidget):
             else:
                 self._confirm_btn.setText("Unconfirm All")
 
-    def delete_selected(self):
+    # no @pause_page_updates -- we are deleting LATER anyway
+    def delete_selected(self, *args):
         """Remove all selected items."""
         for widget in self._get_items():
             if widget.selected:
@@ -582,6 +598,7 @@ class HexifyWidget(QtGui.QWidget):
 
     def update_page(self):
         """Update the page preview after a change."""
+        if self._pause_updates: return
         self._pages = self._get_pages((32, 32))
         if self._preview_page >= len(self._pages):
             self._preview_page = len(self._pages) - 1
