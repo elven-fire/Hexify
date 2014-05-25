@@ -25,10 +25,13 @@ class TestHexifiedImageWidget(unittest.TestCase):
 
     def setUp(self):
         """Prepare widgets for use in testing."""
-        app = QtGui.QApplication(sys.argv)
+        self.app = QtGui.QApplication(sys.argv)
         self.main = HexifyWidget()
         self.hexed = HexifiedImage(None, "A")
         self.widget = self.main.add_image(self.hexed)
+
+    def tearDown(self):
+        del self.app
         
     def test_init(self):
         """Verify default attributes."""
@@ -71,17 +74,19 @@ class TestHexifiedImageWidget(unittest.TestCase):
         self.assertFalse(self.widget.confirmed)
 
 
-@unittest.skip("Unknown error in preview generation??")
 class TestHexifiedImagePreviews(unittest.TestCase):
 
     """Test the functions for modifying the HexifiedImage."""
 
     def setUp(self):
         """Prepare widgets for use in testing."""
-        app = QtGui.QApplication(sys.argv)
+        self.app = QtGui.QApplication(sys.argv)
         self.main = HexifyWidget()
         self.hexed = HexifiedImage(None, "A")
         self.widget = self.main.add_image(self.hexed)
+
+    def tearDown(self):
+        del self.app
 
     def test_resize(self):
         """Verify next shape/size."""
@@ -127,8 +132,11 @@ class TestHexifyWidget(unittest.TestCase):
 
     def setUp(self):
         """Prepare widgets for use in testing."""
-        app = QtGui.QApplication(sys.argv)
+        self.app = QtGui.QApplication(sys.argv)
         self.main = HexifyWidget()
+
+    def tearDown(self):
+        del self.app
 
     def test_init(self):
         """Verify default attributes."""
@@ -163,11 +171,14 @@ class TestBulkActions(unittest.TestCase):
 
     def setUp(self):
         """Prepare widgets for use in testing."""
-        app = QtGui.QApplication(sys.argv)
+        self.app = QtGui.QApplication(sys.argv)
         self.main = HexifyWidget()
         self.widget1 = self.main.add_image(HexifiedImage(None, "A"))
         self.widget2 = self.main.add_image(HexifiedImage(None, "B"))
         self.widget3 = self.main.add_image(HexifiedImage(None, "C"))
+
+    def tearDown(self):
+        del self.app
 
 
     ## Selections
@@ -231,7 +242,7 @@ class TestBulkActions(unittest.TestCase):
         self.assertFalse(self.widget1.selected)
         self.assertFalse(self.widget2.selected)
         self.assertTrue(self.widget3.selected)
-        
+
     @unittest.expectedFailure
     def test_manual_select_all(self):
         """Verify "select all" box is set correctly on manual select."""
@@ -301,7 +312,7 @@ class TestBulkActions(unittest.TestCase):
         self.main.confirm_selected()
         self.assertEqual(self.main._confirm_btn.text(), "Confirm All")
 
-    @unittest.skip("??")
+    @unittest.expectedFailure
     def test_add_more_partial_select(self):
         """Verify that new items are selected when selecting unconfirmed."""
         self.widget1.confirmed = True
@@ -309,7 +320,7 @@ class TestBulkActions(unittest.TestCase):
         widget4 = self.main.add_image(HexifiedImage(None, "D"))
         self.assertTrue(widget4.selected)
 
-    @unittest.skip("??")
+    @unittest.expectedFailure
     def test_add_more_select_all(self):
         """Verify that new items are selected when selecting all."""
         self.main._selected.setCheckState(QtCore.Qt.Checked)
@@ -319,7 +330,6 @@ class TestBulkActions(unittest.TestCase):
 
     ## Bulk Actions
         
-    @unittest.skip("Unknown error in preview generation from unittest?")
     def test_resize_selected(self):
         """Verify selected items (only) are resized."""
         self.widget1.selected = True
@@ -335,7 +345,6 @@ class TestBulkActions(unittest.TestCase):
         self.assertEqual(self.widget2.hexed.size, 1)
         self.assertEqual(self.widget3.hexed.size, 1)
         
-    @unittest.skip("Unknown error in preview generation from unittest?")
     def test_randomize_selected(self):
         """Verify selected items (only) are randomized."""
         self.widget1.selected = True
@@ -428,46 +437,48 @@ class TestBulkActions(unittest.TestCase):
         self.assertEqual(self.main._selected.checkState(), QtCore.Qt.Unchecked)
 
 
-@unittest.skip("Unknown error in preview generation from unittest?")
 class TestPagePreview(unittest.TestCase):
 
     """Test pagination of the preview."""
 
     def setUp(self):
         """Prepare widgets for use in testing."""
-        app = QtGui.QApplication(sys.argv)
+        self.app = QtGui.QApplication(sys.argv)
         self.main = HexifyWidget()
+
+    def tearDown(self):
+        del self.app
 
     def test_single_page_next(self):
         """Confirm no behavior for a single-page document."""
         self.main.next_preview_page()
-        self.assertEquals(self.main._preview_page, 0)
+        self.assertEqual(self.main._preview_page, 0)
 
     def test_single_page_prev(self):
         """Confirm no behavior for a single-page document."""
         self.main.prev_preview_page()
-        self.assertEquals(self.main._preview_page, 0)
+        self.assertEqual(self.main._preview_page, 0)
 
     def test_two_page_next(self):
         """Confirm advancement and wrap-around."""
         for i in range(31):
             self.main.add_image(HexifiedImage(None, "A", 3))
-        self.assertEquals(self.main._pages, 2)
-        self.assertEquals(self.main._preview_page, 0)
+        self.assertEqual(len(self.main._pages), 2)
+        self.assertEqual(self.main._preview_page, 0)
         self.main.next_preview_page()
-        self.assertEquals(self.main._preview_page, 1)
+        self.assertEqual(self.main._preview_page, 1)
         self.main.next_preview_page()
-        self.assertEquals(self.main._preview_page, 0)
+        self.assertEqual(self.main._preview_page, 0)
 
     def test_two_page_prev(self):
         """Confirm advancement and wrap-around."""
         for i in range(31):
             self.main.add_image(HexifiedImage(None, "A", 3))
-        self.assertEquals(self.main._preview_page, 0)
+        self.assertEqual(self.main._preview_page, 0)
         self.main.prev_preview_page()
-        self.assertEquals(self.main._preview_page, 1)
+        self.assertEqual(self.main._preview_page, 1)
         self.main.prev_preview_page()
-        self.assertEquals(self.main._preview_page, 0)
+        self.assertEqual(self.main._preview_page, 0)
 
 
 @unittest.skip("How to verify output?")
